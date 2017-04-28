@@ -113,18 +113,6 @@ Run `reset-object clear` to clear out the reset object file.
     def self.clear
       File.open(File.join(Repository.root, 'cfcs', 'resetObject.cfm'), 'w')
     end
-
-    def self.update
-      update_folder = File.join(LocalBin.root, 'reset-object-update')
-      Dir.mkdir update_folder
-      `cd #{update_folder} && git clone git@github.com:lucasklaassen/reset-object.git`
-      updated_file = File.read(File.join(LocalBin.root, 'reset-object-update','reset-object','reset-object'))
-      `rm -rf #{update_folder}`
-      File.chmod(0755, LocalBin.root)
-      File.open(LocalBin.reset_object_file, 'w+') do |f|
-        f.write(updated_file)
-      end
-    end
   end
 
 end
