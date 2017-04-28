@@ -1,0 +1,132 @@
+#!/usr/bin/ruby
+
+module ResetObject
+  VERSION = '1.1'
+end
+
+module ResetObject
+  class CFC
+    attr_reader :reset_object_file, :server_scope_variables, :object_to_be_reset, :parsed_object_to_be_reset
+
+    def self.init_at(root, object_to_be_reset)
+      new(root, object_to_be_reset).write
+    end
+
+    def initialize(root, object_to_be_reset)
+      @reset_object_file = File.join(root, 'cfcs', 'resetObject.cfm')
+      @server_scope_variables = File.join(root, 'cfcs', 'serverScopeVariables.cfm')
+      @object_to_be_reset = object_to_be_reset
+      @parsed_object_to_be_reset = find_and_unwrap_object
+    end
+
+    def write
+      File.open(reset_object_file, 'a') do |f|
+        f.write("#{parsed_object_to_be_reset}\n")
+      end
+    end
+
+    private
+
+    def find_and_unwrap_object
+      regex = /#{object_to_be_reset}/
+      File.open(server_scope_variables, 'r') do |f|
+        conditionally_wrapped_object = f.find { |line| line =~ regex }
+        return unwrap_object(conditionally_wrapped_object)
+      end
+    end
+
+    def unwrap_object(wrapped_object)
+      opening_conditional = "<cfif isDefined('#{object_to_be_reset}') is not true>"
+      closing_conditional = "</cfif>"
+      wrapped_object.sub! opening_conditional, ''
+      wrapped_object.sub! closing_conditional, ''
+    end
+  end
+end
+
+require 'English'
+
+module ResetObject
+  module Repository
+
+    def self.root
+      path = `git rev-parse --show-toplevel`.chomp
+      abort unless $CHILD_STATUS.exitstatus == 0
+      path
+    end
+
+    def self.ensure_exists
+      root
+    end
+
+  end
+end
+
+module ResetObject
+  module LocalBin
+
+    def self.root
+      reset_object_file.sub! 'reset-object', ''
+    end
+
+    def self.reset_object_file
+      path = `which $(reset-object)`.chomp
+      abort unless $CHILD_STATUS.exitstatus == 0
+      path
+    end
+
+    def self.ensure_exists
+      root
+    end
+
+  end
+end
+
+module ResetObject
+  module Runner
+
+    def self.execute(cmd_arg = 'help', *args)
+      command = cmd_arg.gsub(/-/, '_')
+      if command == 'help' || command == 'clear' || command == 'update'
+        send(command, *args)
+      else
+        init(command)
+      end
+    end
+
+    def self.help
+      puts <<-HELP
+reset-object #{VERSION} is installed.
+
+Remember, reset-object is a tool you can use to add coldfusion managers to your
+reset object file. Run `reset-object name.of.manager` in the root folder of your
+platform repo to add it.
+
+Run `reset-object clear` to clear out the reset object file.
+      HELP
+    end
+
+    def self.init(object)
+      CFC.init_at(Repository.root, object)
+    end
+
+    def self.clear
+      File.open(File.join(Repository.root, 'cfcs', 'resetObject.cfm'), 'w')
+    end
+
+    def self.update
+      update_folder = File.join(LocalBin.root, 'reset-object-update')
+      Dir.mkdir update_folder
+      `cd #{update_folder} && git clone git@github.com:lucasklaassen/reset-object.git`
+      updated_file = File.read(File.join(LocalBin.root, 'reset-object-update','reset-object','reset-object'))
+      `rm -rf #{update_folder}`
+      File.chmod(0755, LocalBin.root)
+      File.open(LocalBin.reset_object_file, 'w+') do |f|
+        f.write(updated_file)
+      end
+    end
+  end
+
+end
+
+ResetObject::Runner.execute(*ARGV)
