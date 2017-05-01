@@ -44,6 +44,67 @@ module ResetObject
   end
 end
 
+module ResetObject
+  class CFCV2
+    attr_reader :reset_object_file, :server_scope_variables, :search_query_for_object, :parsed_object_to_be_reset, :siteadmin_application_cfc
+
+    def self.init_at(root, search_query_for_object)
+      new(root, search_query_for_object).write
+    end
+
+    def initialize(root, search_query_for_object)
+      @reset_object_file = File.join(root, 'cfcs', 'resetObject.cfm')
+      @server_scope_variables = File.join(root, 'cfcs', 'serverScopeVariables.cfm')
+      @siteadmin_application_cfc = File.join(root, 'siteadmin', 'Application.cfc')
+      @search_query_for_object = search_query_for_object
+      # @search_results = find_and_unwrap_objects
+      @parsed_object_to_be_reset = find_and_unwrap_object
+    end
+
+    def write
+      File.open(reset_object_file, 'a') do |f|
+        return if parsed_object_to_be_reset.nil?
+        f.write("#{parsed_object_to_be_reset}\n")
+      end
+    end
+
+    private
+
+    def find_and_unwrap_object
+      matched_objects = find_objects_for(server_scope_variables)
+      matched_objects += find_objects_for(siteadmin_application_cfc)
+      matched_objects.map { |object|
+        unwrap_object(object)
+      }
+      objects_with_index = Hash[(0...matched_objects.size).zip matched_objects]
+      if objects_with_index.empty?
+        puts "No objects found."
+        return false
+      end
+      puts "Type the number of the object you'd like to use then press [ENTER]"
+      # puts "Hint: You can enter multiple numbers comma seperated."
+      puts( objects_with_index.map{ |k,v| "#{k} => #{v}" }.sort )
+      index_selected = `read index_selected; echo $index_selected`.chomp
+      return objects_with_index[index_selected.to_i]
+    end
+
+    def find_objects_for(file_to_search)
+      regex = /#{search_query_for_object}/i
+      File.readlines(file_to_search).select { |line|
+        line =~ regex
+      }
+    end
+
+    def unwrap_object(wrapped_object)
+      opening_conditional = /<cfif isDefined(.*?)>/
+      closing_conditional = "</cfif>"
+      wrapped_object.gsub!(opening_conditional, '')
+      wrapped_object.sub! closing_conditional, ''
+      wrapped_object.strip!
+    end
+  end
+end
+
 require 'English'
 
 module ResetObject
@@ -107,7 +168,7 @@ Run `reset-object clear` to clear out the reset object file.
     end
 
     def self.init(object)
-      CFC.init_at(Repository.root, object)
+      CFCV2.init_at(Repository.root, object)
     end
 
     def self.clear
